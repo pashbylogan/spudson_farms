@@ -1,1 +1,0 @@
-# spudson_farms
