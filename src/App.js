@@ -1,17 +1,39 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import logo from "./images/spudson_img.png";
 import invitationalPoster from "./images/spudson-invitational-2026.png";
 import "./App.css";
 
-const tabs = ["About Us", "Get Involved", "Products and Services", "Events"];
+const tabs = [
+  "Home",
+  "About Us",
+  "Get Involved",
+  "Products and Services",
+  "Events",
+];
 const eventTabs = [
   "Spudson Farms Invitational",
   "Harvest Festival",
   "Beer Mile",
 ];
+const leaderboardStorageKey = "spudsonInvitationalLeaderboard";
+
+function getSavedLeaderboard() {
+  try {
+    const savedLeaderboard = window.localStorage.getItem(leaderboardStorageKey);
+    return savedLeaderboard ? JSON.parse(savedLeaderboard) : [];
+  } catch {
+    return [];
+  }
+}
+
+function sortBySpeed(leaderboard) {
+  return [...leaderboard].sort((firstEntry, secondEntry) => {
+    return secondEntry.perceivedSpeed - firstEntry.perceivedSpeed;
+  });
+}
 
 function App() {
-  const [activeTab, setActiveTab] = useState("About Us");
+  const [activeTab, setActiveTab] = useState("Home");
   const [activeEventTab, setActiveEventTab] = useState(
     "Spudson Farms Invitational"
   );
@@ -20,7 +42,15 @@ function App() {
     password: "",
     perceivedSpeed: "",
   });
+  const [leaderboard, setLeaderboard] = useState(getSavedLeaderboard);
   const [submittedName, setSubmittedName] = useState("");
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      leaderboardStorageKey,
+      JSON.stringify(leaderboard)
+    );
+  }, [leaderboard]);
 
   const handleRegistrationChange = (event) => {
     const { name, value } = event.target;
@@ -33,13 +63,30 @@ function App() {
 
   const handleRegistrationSubmit = (event) => {
     event.preventDefault();
-    setSubmittedName(registration.name.trim() || "Mystery potato athlete");
+
+    const submittedNameValue =
+      registration.name.trim() || "Mystery potato athlete";
+    const submittedSpeed = Number.parseInt(registration.perceivedSpeed, 10);
+
+    setLeaderboard((currentLeaderboard) =>
+      sortBySpeed([
+        ...currentLeaderboard,
+        {
+          id: Date.now(),
+          name: submittedNameValue,
+          perceivedSpeed: submittedSpeed,
+        },
+      ])
+    );
+    setSubmittedName(submittedNameValue);
     setRegistration({
       name: "",
       password: "",
       perceivedSpeed: "",
     });
   };
+
+  const rankedLeaderboard = sortBySpeed(leaderboard);
 
   return (
     <main className="app-shell">
@@ -66,6 +113,16 @@ function App() {
       </nav>
 
       <section className="content-panel">
+        {activeTab === "Home" && (
+          <div className="home-panel">
+            <img
+              src={logo}
+              alt="Spudson Farms - Est. 2025"
+              className="home-logo"
+            />
+          </div>
+        )}
+
         {activeTab === "About Us" && (
           <div className="section-grid">
             <article className="bio-card">
@@ -138,53 +195,71 @@ function App() {
                   <div className="event-hero-copy">
                     <p className="eyebrow">Spudson Farms Invitational - 2026</p>
                     <h2>Run hard. Tater harder.</h2>
-                    <p>Spudson Farms Invitational coming soon on July 7th 2026.</p>
+                    <p>Spudson Farms Invitational coming soon on July 5th 2026.</p>
                   </div>
                 </div>
 
-                <form
-                  className="registration-form"
-                  onSubmit={handleRegistrationSubmit}
-                >
-                  <h3>Request Your Spot</h3>
-                  <label>
-                    Name
-                    <input
-                      name="name"
-                      onChange={handleRegistrationChange}
-                      required
-                      type="text"
-                      value={registration.name}
-                    />
-                  </label>
-                  <label>
-                    Password
-                    <input
-                      name="password"
-                      onChange={handleRegistrationChange}
-                      type="password"
-                      value={registration.password}
-                    />
-                  </label>
-                  <label>
-                    Perceived speed
-                    <input
-                      min="0"
-                      name="perceivedSpeed"
-                      onChange={handleRegistrationChange}
-                      required
-                      step="1"
-                      type="number"
-                      value={registration.perceivedSpeed}
-                    />
-                  </label>
-                  <button type="submit">Submit</button>
-                  {submittedName && (
-                    <p className="form-success">
-                      {submittedName}, your extremely official request is in.
-                    </p>
-                  )}
-                </form>
+                <div className="registration-layout">
+                  <form
+                    className="registration-form"
+                    onSubmit={handleRegistrationSubmit}
+                  >
+                    <h3>Request Your Spot</h3>
+                    <label>
+                      Name
+                      <input
+                        name="name"
+                        onChange={handleRegistrationChange}
+                        required
+                        type="text"
+                        value={registration.name}
+                      />
+                    </label>
+                    <label>
+                      Password
+                      <input
+                        name="password"
+                        onChange={handleRegistrationChange}
+                        type="password"
+                        value={registration.password}
+                      />
+                    </label>
+                    <label>
+                      Perceived speed
+                      <input
+                        min="0"
+                        name="perceivedSpeed"
+                        onChange={handleRegistrationChange}
+                        required
+                        step="1"
+                        type="number"
+                        value={registration.perceivedSpeed}
+                      />
+                    </label>
+                    <button type="submit">Submit</button>
+                    {submittedName && (
+                      <p className="form-success">
+                        {submittedName}, your submission has been recieved.
+                      </p>
+                    )}
+                  </form>
+
+                  <aside className="leaderboard" aria-label="Perceived speed leaderboard">
+                    <h3>Leaderboard</h3>
+                    {rankedLeaderboard.length > 0 ? (
+                      <ol>
+                        {rankedLeaderboard.map((entry) => (
+                          <li key={entry.id}>
+                            <span>{entry.name}</span>
+                            <strong>{entry.perceivedSpeed}</strong>
+                          </li>
+                        ))}
+                      </ol>
+                    ) : (
+                      <p>No submissions yet.</p>
+                    )}
+                  </aside>
+                </div>
               </article>
             )}
 
