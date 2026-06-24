@@ -360,3 +360,9 @@ h1 {
     min-width: 120px;
   }
 }
+
+.form-status {
+  margin: 0;
+  color: #6e4d24;
+  font-weight: 800;
+}

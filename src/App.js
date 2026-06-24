@@ -16,6 +16,10 @@ const eventTabs = [
   "Beer Mile",
 ];
 const leaderboardStorageKey = "spudsonInvitationalLeaderboard";
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
+const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
+const supabaseTable = "invitational_entries";
+const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
 function getSavedLeaderboard() {
   try {
@@ -32,6 +36,66 @@ function sortBySpeed(leaderboard) {
   });
 }
 
+function normalizeSupabaseEntries(entries) {
+  return entries.map((entry) => ({
+    id: entry.id,
+    name: entry.name,
+    perceivedSpeed: entry.perceived_speed,
+  }));
+}
+
+async function supabaseRequest(path, options = {}) {
+  const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${supabaseAnonKey}`,
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Supabase request failed with ${response.status}`);
+  }
+
+  if (response.status === 204) {
+    return null;
+  }
+
+  return response.json();
+}
+
+async function fetchLeaderboard() {
+  const entries = await supabaseRequest(
+    `${supabaseTable}?select=id,name,perceived_speed,created_at&order=perceived_speed.desc&order=created_at.asc`
+  );
+
+  return normalizeSupabaseEntries(entries);
+}
+
+async function addLeaderboardEntry(name, perceivedSpeed) {
+  await supabaseRequest(supabaseTable, {
+    method: "POST",
+    headers: {
+      Prefer: "return=minimal",
+    },
+    body: JSON.stringify({
+      name,
+      perceived_speed: perceivedSpeed,
+    }),
+  });
+}
+
+async function clearLeaderboard() {
+  await supabaseRequest(`${supabaseTable}?id=not.is.null`, {
+    method: "DELETE",
+    headers: {
+      Prefer: "return=minimal",
+    },
+  });
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState("Home");
   const [activeEventTab, setActiveEventTab] = useState(
@@ -44,8 +108,44 @@ function App() {
   });
   const [leaderboard, setLeaderboard] = useState(getSavedLeaderboard);
   const [submittedName, setSubmittedName] = useState("");
+  const [formStatus, setFormStatus] = useState("");
 
   useEffect(() => {
+    if (!isSupabaseConfigured) {
+      return;
+    }
+
+    let isMounted = true;
+
+    async function loadLeaderboard() {
+      setFormStatus("Loading leaderboard...");
+
+      try {
+        const entries = await fetchLeaderboard();
+
+        if (isMounted) {
+          setLeaderboard(entries);
+          setFormStatus("");
+        }
+      } catch {
+        if (isMounted) {
+          setFormStatus("Leaderboard is temporarily unavailable.");
+        }
+      }
+    }
+
+    loadLeaderboard();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isSupabaseConfigured) {
+      return;
+    }
+
     window.localStorage.setItem(
       leaderboardStorageKey,
       JSON.stringify(leaderboard)
@@ -61,29 +161,63 @@ function App() {
     }));
   };
 
-  const handleRegistrationSubmit = (event) => {
+  const handleRegistrationSubmit = async (event) => {
     event.preventDefault();
 
     const submittedNameValue =
       registration.name.trim() || "Mystery potato athlete";
     const submittedSpeed = Number.parseInt(registration.perceivedSpeed, 10);
+    const isAdminReset =
+      submittedNameValue.toLowerCase() === "admin" && submittedSpeed === 69420;
 
-    setLeaderboard((currentLeaderboard) =>
-      sortBySpeed([
-        ...currentLeaderboard,
-        {
-          id: Date.now(),
-          name: submittedNameValue,
-          perceivedSpeed: submittedSpeed,
-        },
-      ])
-    );
-    setSubmittedName(submittedNameValue);
-    setRegistration({
-      name: "",
-      password: "",
-      perceivedSpeed: "",
-    });
+    setFormStatus("");
+
+    if (isAdminReset) {
+      try {
+        if (isSupabaseConfigured) {
+          await clearLeaderboard();
+        }
+
+        setLeaderboard([]);
+        setSubmittedName("Leaderboard cleared");
+        setRegistration({
+          name: "",
+          password: "",
+          perceivedSpeed: "",
+        });
+      } catch {
+        setFormStatus("Leaderboard could not be cleared. Try again in a minute.");
+      }
+
+      return;
+    }
+
+    try {
+      if (isSupabaseConfigured) {
+        await addLeaderboardEntry(submittedNameValue, submittedSpeed);
+        setLeaderboard(await fetchLeaderboard());
+      } else {
+        setLeaderboard((currentLeaderboard) =>
+          sortBySpeed([
+            ...currentLeaderboard,
+            {
+              id: Date.now(),
+              name: submittedNameValue,
+              perceivedSpeed: submittedSpeed,
+            },
+          ])
+        );
+      }
+
+      setSubmittedName(submittedNameValue);
+      setRegistration({
+        name: "",
+        password: "",
+        perceivedSpeed: "",
+      });
+    } catch {
+      setFormStatus("Submission failed. Try again in a minute.");
+    }
   };
 
   const rankedLeaderboard = sortBySpeed(leaderboard);
@@ -239,12 +373,18 @@ function App() {
                     <button type="submit">Submit</button>
                     {submittedName && (
                       <p className="form-success">
-                        {submittedName}, your submission has been recieved.
+                        {submittedName === "Leaderboard cleared"
+                          ? submittedName
+                          : `${submittedName}, your submission has been recieved.`}
                       </p>
                     )}
+                    {formStatus && <p className="form-status">{formStatus}</p>}
                   </form>
 
-                  <aside className="leaderboard" aria-label="Perceived speed leaderboard">
+                  <aside
+                    className="leaderboard"
+                    aria-label="Perceived speed leaderboard"
+                  >
                     <h3>Leaderboard</h3>
                     {rankedLeaderboard.length > 0 ? (
                       <ol>
