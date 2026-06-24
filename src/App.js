@@ -338,7 +338,7 @@ function App() {
                     className="registration-form"
                     onSubmit={handleRegistrationSubmit}
                   >
-                    <h3>Request Your Spot</h3>
+                    <h3>Enter your perceived speed</h3>
                     <label>
                       Name
                       <input
